@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Tracker Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+        
+        .main-title { text-align: center; color: #1a252f; font-size: 28px; font-weight: 700; margin-top: 10px; margin-bottom: 25px; letter-spacing: 0.5px; }
+        
+        
+        .top-bar { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            background: #eef2f7; 
+            padding: 12px 15px; 
+            border-radius: 10px; 
+            margin-bottom: 25px; 
+        }
+
+        
+        .welcome-badge, .total-expense-widget, .budget-box {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #007bff;
+            color: #ffffff;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0, 123, 255, 0.25);
+            white-space: nowrap;
+        }
+
+        .counter-display {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+
+        
+        .budget-box input {
+            width: 80px;
+            padding: 4px 6px;
+            border: none;
+            border-radius: 4px;
+            outline: none;
+            font-weight: bold;
+            color: #1a252f;
+            text-align: center;
+        }
+
+        .form-container { display: flex; gap: 10px; margin-bottom: 25px; flex-wrap: wrap; background: #fafafa; padding: 15px; border-radius: 8px; border: 1px solid #eee; align-items: center; }
+        .form-container input, .form-container select { padding: 8px 12px; border: 1px solid #ccc; border-radius: 5px; outline: none; }
+        .btn-add { background-color: #28a745; color: white; border: none; padding: 8px 18px; border-radius: 5px; cursor: pointer; font-weight: 600; }
+        .btn-add:hover { background-color: #218838; }
+
+     
+        .dashboard-content { display: flex; gap: 20px; }
+        .table-section { flex: 2; }
+        .chart-section { flex: 1; text-align: center; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { background-color: #007bff; color: white; text-align: left; padding: 10px; }
+        td { padding: 10px; border-bottom: 1px solid #ddd; }
+        .badge-expense { color: #dc3545; font-weight: bold; }
+        .badge-income { color: #28a745; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1 class="main-title">Expense Tracker Dashboard</h1>
+
+    
+    <div class="top-bar">
+        <div class="welcome-badge">
+            <span>Welcome, {{ user_name if user_name else 'User' }}!</span>
+        </div>
+        
+        <div class="total-expense-widget">
+            <span>Total Spent:</span>
+            <div id="expense-counter" class="counter-display">₹000000</div>
+        </div>
+
+        <div class="budget-box">
+            <span>Monthly Budget (₹):</span>
+            <input type="number" id="monthly_budget" placeholder="10000" oninput="saveBudget(); checkBudgetAlerts(totalExpense)">
+        </div>
+    </div>
+<!-- AI Smart Alert Banner -->
+<div id="ai-alert-box" style="padding: 12px; margin-top: 15px; background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; border-radius: 8px; display: none;">
+    <strong>🤖 AI Insights:</strong> <span id="ai-message">Loading AI recommendations...</span>
+</div>
+    
+    <div class="form-container">
+        <input type="number" id="cat_id" placeholder="Cat ID (1,2,3)" style="width: 110px;" required>
+        <input type="date" id="trans_date" required>
+        <input type="text" id="description" placeholder="Description" style="flex: 1;" required>
+        <select id="type">
+            <option value="Expense">Expense</option>
+            <option value="Income">Income</option>
+        </select>
+        <input type="number" id="amount" placeholder="Amount (₹)" style="width: 120px;" required>
+        <button type="button" class="btn-add" onclick="addTransaction()">Add Transaction</button>
+    </div>
+
+    <div class="dashboard-content">
+        <div class="table-section">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Type</th>
+                        <th>Amount (₹)</th>
+                    </tr>
+                </thead>
+                <tbody id="transaction-table-body"></tbody>
+            </table>
+        </div>
+
+        <div class="chart-section">
+            <h3>Expense Breakdown</h3>
+            <canvas id="expenseChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+let myChart = null;
+let totalExpense = 0;
+let sharedAudioCtx = null;
+
+function getAudioContext() {
+    if (!sharedAudioCtx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+            sharedAudioCtx = new AudioCtx();
+        }
+    }
+    if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
+        sharedAudioCtx.resume();
+    }
+    return sharedAudioCtx;
+}
+
+document.addEventListener('click', function unlockAudio() {
+    getAudioContext();
+    document.removeEventListener('click', unlockAudio);
+}, { once: true });
+
+function loadSavedBudget() {
+    const savedBudget = localStorage.getItem('user_budget');
+    document.getElementById('monthly_budget').value = savedBudget ? savedBudget : 10000;
+}
+
+function saveBudget() {
+    const currentBudget = document.getElementById('monthly_budget').value;
+    localStorage.setItem('user_budget', currentBudget);
+}
+
+
+function playTickSound() {
+    try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1046.50, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1318.51, ctx.currentTime + 0.08);
+
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.start();
+        osc.stop(ctx.currentTime + 0.12);
+    } catch (e) {
+        console.log("Audio play suppressed:", e);
+    }
+}
+
+
+function animateCounter(targetValue) {
+    const counterElement = document.getElementById('expense-counter');
+    let startValue = 0;
+    const duration = 1000; 
+    const stepTime = 60; 
+    const steps = duration / stepTime;
+    const increment = targetValue / steps;
+
+    const timer = setInterval(() => {
+        startValue += increment;
+        
+        playTickSound();
+
+        if (startValue >= targetValue) {
+            startValue = targetValue;
+            clearInterval(timer);
+        }
+        
+        const formattedNumber = String(Math.floor(startValue)).padStart(6, '0');
+        counterElement.innerText = `₹${formattedNumber}`;
+    }, stepTime);
+}
+
+function checkBudgetAlerts(expenseTotal) {
+    const budgetInput = parseFloat(document.getElementById('monthly_budget').value) || 0;
+    if (budgetInput <= 0) return;
+
+    if (expenseTotal >= budgetInput) {
+        alert(`🚨 ALERT: Aapka budget (₹${budgetInput}) 100% khatam ho chuka hai! Total Expense: ₹${expenseTotal}`);
+    } else if (expenseTotal >= budgetInput * 0.8) {
+        alert(`⚠️ WARNING: Aapne apne budget (₹${budgetInput}) ka 80% se zyada kharch kar diya hai! Total Expense: ₹${expenseTotal}`);
+    }
+}
+
+async function loadTransactions() {
+    try {
+        const response = await fetch('/api/transactions');
+        if (response.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        const data = await response.json();
+
+        const tbody = document.getElementById('transaction-table-body');
+        tbody.innerHTML = '';
+        const categoryTotals = {};
+        totalExpense = 0;
+
+        data.forEach(item => {
+            const formattedDate = item.transaction_date ? new Date(item.transaction_date).toLocaleDateString() : 'N/A';
+            const isExpense = String(item.type).toLowerCase() === 'expense';
+            
+            const row = `
+            <tr>
+                <td>Category ${item.category_id}</td>
+                <td>${formattedDate}</td>
+                <td>${item.description}</td>
+                <td class="${isExpense ? 'badge-expense' : 'badge-income'}">${item.type}</td>
+                <td>₹${item.amount}</td>
+            </tr>`;
+            tbody.innerHTML += row;
+
+            if (isExpense) {
+                const amt = parseFloat(item.amount) || 0;
+                const catName = 'Category ' + item.category_id;
+                categoryTotals[catName] = (categoryTotals[catName] || 0) + amt;
+                totalExpense += amt;
+            }
+        });
+
+        renderChart(categoryTotals);
+        animateCounter(totalExpense);
+
+        setTimeout(() => {
+            checkBudgetAlerts(totalExpense);
+        }, 1100);
+
+    } catch (err) {
+        console.error("Error loading data:", err);
+    }
+}
+
+function renderChart(categoryTotals) {
+    const ctx = document.getElementById('expenseChart').getContext('2d');
+    const labels = Object.keys(categoryTotals);
+    const values = Object.values(categoryTotals);
+
+    if (myChart) {
+        myChart.destroy();
+    }
+
+    myChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels.length ? labels : ['No Data'],
+            datasets: [{
+                data: values.length ? values : [1],
+                backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF']
+            }]
+        }
+    });
+}
+
+async function addTransaction() {
+    getAudioContext();
+
+    const category_id = document.getElementById('cat_id').value;
+    const amount = document.getElementById('amount').value;
+    const type = document.getElementById('type').value;
+    const description = document.getElementById('description').value;
+    const transaction_date = document.getElementById('trans_date').value;
+
+    if (!category_id || !amount || !description || !transaction_date) {
+        alert("Please fill all fields!");
+        return;
+    }
+
+    const formData = {
+        category_id: category_id,
+        amount: amount,
+        type: type,
+        description: description,
+        transaction_date: transaction_date
+    };
+
+    try {
+        const response = await fetch('/api/add_transaction', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+        });
+
+        const result = await response.json();
+        if (response.ok) {
+            loadTransactions(); 
+            setTimeout(() => {
+                alert("Transaction Success!");
+            }, 1200);
+        } else {
+            alert("Error: " + (result.error || "Transaction failed"));
+        }
+    } catch (err) {
+        alert("Server error!");
+    }
+}
+
+
+loadSavedBudget();
+loadTransactions();
+</script>
+<script>
+// Jab user Description box me likhega (e.g. "Zomato 300"), AI category auto-fill/suggest karega
+document.getElementById('description_input').addEventListener('blur', function() {
+    let desc = this.value;
+    if(desc.length > 2) {
+        fetch('/api/predict-category', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: desc })
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Category waale input ya dropdown me value set kar do
+            document.getElementById('category_input').value = data.category;
+            console.log("AI Suggested Category:", data.category);
+        });
+    }
+});
+</script>
+<script>
+// 1. Auto-Categorization on Description Input Blur
+document.getElementById('description').addEventListener('blur', function() {
+    let desc = this.value;
+    if(desc.trim().length > 2) {
+        fetch('/api/predict-category', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: desc })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log("AI Predicted Category:", data.category);
+            // Dynamic hint or feedback for category
+        })
+        .catch(err => console.error("AI Error:", err));
+    }
+});
+
+// 2. Fetch AI Budget Alert on Page Load
+window.addEventListener('DOMContentLoaded', function() {
+    fetch('/api/budget-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            monthly_budget: 10000, 
+            total_spent: 7500,     
+            current_day: 15        
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        let alertBox = document.getElementById('ai-alert-box');
+        let alertMsg = document.getElementById('ai-message');
+        if (alertBox && alertMsg) {
+            alertBox.style.display = 'block';
+            alertMsg.innerText = data.message;
+        }
+    })
+    .catch(err => console.error(err));
+});
+</script>
+</body>
+</html>
